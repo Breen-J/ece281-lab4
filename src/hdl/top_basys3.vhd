@@ -92,21 +92,98 @@ end top_basys3;
 architecture top_basys3_arch of top_basys3 is 
   
 	-- declare components and signals
+	
+-- SEVENSEG DECODER...
+component sevenSegDecoder is
+        Port ( i_D : in STD_LOGIC_VECTOR (3 downto 0);
+               o_S : out STD_LOGIC_VECTOR (6 downto 0));
+    end component sevenSegDecoder;	
+	
+--BASIC FSM
+component elevator_controller_fsm is
+        Port ( i_clk     : in  STD_LOGIC;
+               i_reset   : in  STD_LOGIC;
+               i_stop    : in  STD_LOGIC;
+               i_up_down : in  STD_LOGIC;
+               o_floor   : out STD_LOGIC_VECTOR (3 downto 0)           
+             );
+    end component elevator_controller_fsm;
 
-  
+-- TDM (ADVANCED FUNCTIONALITY)
+component TDM4 is
+	generic ( constant k_WIDTH : natural  := 4); -- bits in input and output
+    Port ( i_clk		: in  STD_LOGIC;
+           i_reset		: in  STD_LOGIC; -- asynchronous
+           i_D3 		: in  STD_LOGIC_VECTOR (k_WIDTH - 1 downto 0);
+		   i_D2 		: in  STD_LOGIC_VECTOR (k_WIDTH - 1 downto 0);
+		   i_D1 		: in  STD_LOGIC_VECTOR (k_WIDTH - 1 downto 0);
+		   i_D0 		: in  STD_LOGIC_VECTOR (k_WIDTH - 1 downto 0);
+		   o_data		: out STD_LOGIC_VECTOR (k_WIDTH - 1 downto 0);
+		   o_sel		: out STD_LOGIC_VECTOR (3 downto 0)	-- selected data line (one-cold)
+	);
+end component TDM4;
+	
+-- CLOCK
+component clock_divider is
+	generic ( constant k_DIV : natural := 25000000	); -- How many clk cycles until slow clock toggles
+											   -- Effectively, you divide the clk double this 
+											   -- number (e.g., k_DIV := 2 --> clock divider of 4)
+	port ( 	i_clk    : in std_logic;
+			i_reset  : in std_logic;		   -- asynchronous
+			o_clk    : out std_logic		   -- divided (slow) clock
+	);
+end component clock_divider;
+	
+	
+	signal w_clk : STD_LOGIC := '0';
+	signal w_Floor : STD_LOGIC_VECTOR (3 downto 0) := "0010";
+	signal w_reset_clk_div : STD_LOGIC := '0';
+	signal w_reset_elv_cont : STD_LOGIC := '0';
+
 begin
 	-- PORT MAPS ----------------------------------------
 
+clock_divider_inst : clock_divider
+    port map(
+             i_clk => clk, 
+             i_reset => w_reset_clk_div,
+             o_clk => w_clk
+             );
+
+
+elevator_contoller_fsm_inst : elevator_controller_fsm 
+    port map(
+             i_reset => w_reset_elv_cont,
+             i_stop => sw(0), 
+             i_up_down => sw(1), 
+             i_clk => w_clk,
+             o_floor => w_Floor
+             );
+	
+	
+sevenSegDecoder_inst : sevenSegDecoder 
+    port map(
+             i_D => w_Floor,
+             o_S => seg
+                );
 	
 	
 	-- CONCURRENT STATEMENTS ----------------------------
 	
+	w_reset_clk_div <= ((btnL) or (btnU));
+	w_reset_elv_cont <= ((btnR) or (btnU));
+	
+	
 	-- LED 15 gets the FSM slow clock signal. The rest are grounded.
 	
-
+    led(15) <= w_clk; 
+    led(14 downto 0) <= "000000000000000";
 	-- leave unused switches UNCONNECTED. Ignore any warnings this causes.
 	
 	-- wire up active-low 7SD anodes (an) as required
-	-- Tie any unused anodes to power ('1') to keep them off
-	
+	an(2) <= '0';
+    -- Tie any unused anodes to power ('1') to keep them off
+	an(3) <= '1';
+	an(1 downto 0) <= "11";
+       	
 end top_basys3_arch;
